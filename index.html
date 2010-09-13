@@ -1,0 +1,174 @@
+<html>
+  <head>
+	<!-- map key works for localhost -->
+    <script src="http://maps.google.com/maps?file=api&amp;v=2&amp;sensor=false&amp;key=ABQIAAAA2UDkA09pKkianxmJHi-k4hT2yXp_ZAY8_ufC3CFXhHIE1NvwkxRfOhnCDe7tSzk4g_cQ2IzYXjB4xw"
+     type="text/javascript"></script>
+    <script type="text/javascript">
+	   	window.onresize = resize();
+		lat = lon = 0;
+		// This painting tool works like a drawing pencil which tracks the mouse 
+		// movements.
+		function tool_pencil () {
+			var tool = this;
+		  	this.started = false;
+
+		  	// This is called when you start holding down the mouse button.
+		  	// This starts the pencil drawing.
+		  	this.mousedown = function (ev) {
+		      context.beginPath();
+		      context.moveTo(ev._x, ev._y);
+		      tool.started = true;
+		  	};
+		
+		  	// This function is called every time you move the mouse. Obviously, it only 
+		  	// draws if the tool.started state is set to true (when you are holding down 
+		  	// the mouse button).
+		  	this.mousemove = function (ev) {
+		    	if (tool.started) {
+		      		context.lineTo(ev._x, ev._y);
+		      		context.stroke();
+		    	}
+		  	};
+
+		  	// This is called when you release the mouse button.
+		  	this.mouseup = function (ev) {
+		    	if (tool.started) {
+		      		tool.mousemove(ev);
+		      		tool.started = false;
+		    	}
+		  	};
+		}
+		// The general-purpose event handler. This function just determines the mouse 
+		// position relative to the canvas element.
+		function ev_canvas (ev) {
+			if (ev.layerX || ev.layerX == 0) { // Firefox
+		    	ev._x = ev.layerX;
+		    	ev._y = ev.layerY;
+		  	} else if (ev.offsetX || ev.offsetX == 0) { // Opera
+		    		ev._x = ev.offsetX;
+		    		ev._y = ev.offsetY;
+		  	}
+		  	// Call the event handler of the tool.
+		  	var func = tool[ev.type];
+		  	if (func) {
+		    	func(ev);
+		  	}
+		}		
+	   	function resize() {
+			var map_div = document.querySelector('#map_div');
+	   		if (window.innerHeight) {
+				map_div.style.height = window.innerHeight+'px';
+				map_div.style.width = window.innerWidth-350+'px';
+			} else{
+				document.body.scroll="no";
+				map_div.style.height = document.body.clientHeight+'px';
+				map_div.style.width = document.body.clientWidth-350+'px'; 
+	       	}		
+	   	}
+	   	function createMarker(lat,lon,img) {
+	     	var marker = new GMarker(new GLatLng(lat,lon),{draggable: true});
+	        GEvent.addListener(marker,"click", function() {
+	          marker.openInfoWindowHtml('<img src="'+img+'"/>');
+	        });
+			GEvent.addListener(marker, "dragstart", function() {
+			  map.closeInfoWindow();
+			});
+			GEvent.addListener(marker, "dragend", function() {
+	          marker.openInfoWindowHtml('<img src="'+img+'"/>');
+			});	
+			return marker;
+	   	}
+	   	function success(position) {
+			lat = position.coords.latitude;
+ 			lon = position.coords.longitude;
+	   		map.addMapType(G_PHYSICAL_MAP);						
+	   		map.setCenter(new GLatLng(lat, lon), 12);
+       		map.setUIToDefault();
+	   		{% for entry in entries %}	
+     			map.addOverlay(createMarker({{ entry.llmap.lat }},{{ entry.llmap.lon }},"{{ entry.img }}"));
+	   		{% endfor %}
+
+	   	}	
+		function eraseCanvas(){
+			var canvas = document.querySelector('#pizarra');
+		   	var context = canvas.getContext('2d');
+		   	context.clearRect(0, 0, canvas.width, canvas.height);			
+		}
+	   	function storeCanvas(){
+			var canvas = document.querySelector('#pizarra');
+			var img = canvas.toDataURL();
+			var client = new XMLHttpRequest();	
+		 	client.onreadystatechange = function() {
+				if(this.readyState == 4) {
+					eraseCanvas();
+					drawMarkers();
+				}
+			}			
+		 	client.open("POST", "create");
+			client.setRequestHeader("Content-Type", "text/plain;charset=UTF-8");
+	     	client.send("lat="+lat+"&lon="+lon+"&img="+img);		
+	   }
+	   function drawMarkers(){
+			var client = new XMLHttpRequest();	
+		 	client.onreadystatechange = function() {
+				if(this.readyState == 4) {
+					var data = eval(client.responseText);					
+					var llmap;
+					for (var i = 0; i < data.length; i++){
+						llmap = data[i].llmap.split(",",2);
+						map.addOverlay(createMarker(llmap[0],llmap[1],data[i].img));
+					}
+				}
+			}			
+		 	client.open("POST", "entries");
+	     	client.send();			
+	   }
+	   function initialize() {
+	     	if (GBrowserIsCompatible()) {
+		  		if (navigator.geolocation) {
+		    		navigator.geolocation.getCurrentPosition(success);
+				}		
+				resize();
+	       		map = new GMap2(document.getElementById("map_div"));
+
+	   	   		var canvas = document.querySelector('#pizarra');
+			    if (!canvas) {
+			      alert('Error: I cannot find the canvas element!');
+			      return;
+			    }
+
+			    if (!canvas.getContext) {
+			      alert('Error: no canvas.getContext!');
+			      return;
+			    }
+
+			    // Get the 2D canvas context.
+			    context = canvas.getContext('2d');
+			    if (!context) {
+			      alert('Error: failed to getContext!');
+			      return;
+			    }
+
+			    // Pencil tool instance.
+			    tool = new tool_pencil();
+
+			    // Attach the mousedown, mousemove and mouseup event listeners.
+			    canvas.addEventListener('mousedown', ev_canvas, false);
+			    canvas.addEventListener('mousemove', ev_canvas, false);
+			    canvas.addEventListener('mouseup',   ev_canvas, false);
+	     	}
+	   }
+    </script>	
+  </head>
+
+  <body onload="initialize()">
+	Dibuja algo y se agregar al mapa geolocalizado :)<br/><br/>
+	<canvas id="pizarra" width="330" height="330" style="border: 1px solid #000;">
+		<p>Your browser doesn't support canvas.</p>
+	</canvas>
+	<br/>
+	<button type="button" onclick="eraseCanvas()">Borrar</button>
+	<button type="button" onclick="storeCanvas()">Guardar</button>	
+	<div id="map_div" style="position:absolute; left:350px; top: 0px; width:600px; height: 800px; "></div>
+  </body>
+</html>
